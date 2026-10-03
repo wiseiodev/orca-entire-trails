@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { --good: #3fb950; --warn: #d29922; --bad: var(--destructive, #f85149); }
+  body { margin: 0; padding: 12px; overflow-wrap: anywhere; font: 12px/1.45 system-ui, sans-serif; color: var(--foreground, #ddd); background: var(--background, transparent); }
+  header { margin-bottom: 14px; }
+  .trail-line { display: flex; gap: 8px; align-items: center; }
+  .number { font-weight: 600; }
+  .status { padding: 0 6px; border: 1px solid var(--border, #444); border-radius: 999px; color: var(--muted-foreground, #999); font-size: 11px; }
+  .title { margin-top: 4px; font-size: 13px; }
+  .meta, .count, .note, .empty, .detail, footer, .sha { color: var(--muted-foreground, #999); }
+  .meta { margin-top: 2px; font-size: 11px; }
+  section { margin-bottom: 14px; }
+  h2 { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted-foreground, #999); }
+  .count { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 4px; }
+  details { border-bottom: 1px solid var(--border, #333); }
+  summary { display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted-foreground, #999); }
+  .good .dot { background: var(--good); }
+  .good .icon { color: var(--good); }
+  .warn .dot { background: var(--warn); }
+  .bad .dot { background: var(--bad); }
+  .bad .icon { color: var(--bad); }
+  .muted .icon { color: var(--muted-foreground, #999); }
+  .label { flex: none; min-width: 72px; }
+  .bar { flex: 1; height: 4px; border-radius: 2px; background: var(--muted, #333); overflow: hidden; }
+  .bar i { display: block; height: 100%; background: currentColor; }
+  .good .bar i { background: var(--good); }
+  .warn .bar i { background: var(--warn); }
+  .bad .bar i { background: var(--bad); }
+  .bar-empty { background: none; }
+  .value { flex: none; min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .stale { opacity: .55; }
+  .detail { margin: 0 0 8px; white-space: pre-wrap; }
+  .gate { display: grid; grid-template-columns: 14px 72px 1fr; gap: 6px; padding: 4px 0; border-bottom: 1px solid var(--border, #333); }
+  .gate .detail { margin: 0; }
+  .severity { flex: none; padding: 0 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: var(--muted, #333); }
+  .severity.high { color: var(--bad); }
+  .severity.medium { color: var(--warn); }
+  .location { min-width: 0; font-family: ui-monospace, monospace; font-size: 11px; }
+  .message { color: var(--muted-foreground, #999); }
+  code, pre { font-family: ui-monospace, monospace; font-size: 11px; }
+  pre.error { white-space: pre-wrap; color: var(--bad); }
+  footer { font-size: 11px; }
+</style>
+</head>
+<body>
+<p class="message">Waiting for Entire… If this stays, run <b>Entire Trails: Refresh</b> from the command palette.</p>
+
+</body>
+</html>
