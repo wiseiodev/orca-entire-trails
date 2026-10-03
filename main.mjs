@@ -179,6 +179,16 @@ export default function activate(orca) {
     return handle
   }
 
+  async function findAgent(cwd) {
+    const listed = await runJson(ORCA_BIN, ['terminal', 'list', '--worktree', `path:${cwd}`, '--json'])
+    const agent = listed.result.terminals
+      .filter((terminal) => terminal.agentIdentity)
+      .sort((a, b) => (b.lastOutputAt ?? 0) - (a.lastOutputAt ?? 0))[0]
+    if (!agent) return null
+    const name = agent.agentIdentity
+    return { terminalId: agent.handle, name: name.charAt(0).toUpperCase() + name.slice(1) }
+  }
+
   async function refresh() {
     if (!focus?.cwd) return
     const refreshGeneration = generation
@@ -211,12 +221,21 @@ export default function activate(orca) {
       })
       if (refreshGeneration !== generation) return
     }
+    const agent =
+      trail.status === 'open'
+        ? await findAgent(cwd).catch((error) => {
+            log(error)
+            return null
+          })
+        : null
+    if (refreshGeneration !== generation) return
     state = {
       status: 'ready',
       branch,
       trail: pickTrail(trail),
       findings: findings && pickFindings(findings),
-      terminalId: focus.terminalId
+      terminalId: focus.terminalId,
+      agent
     }
     if (!watcher) startWatch(trail.number, cwd, refreshGeneration)
     await publish()

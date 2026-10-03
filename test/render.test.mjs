@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { test } from 'node:test'
-import { monitorTone, renderPanel, shellQuote } from '../render.mjs'
+import { monitorTone, renderPanel, scorePrompt, shellQuote } from '../render.mjs'
 
 const percent = (polarity, percent_value) => ({ value_type: 'percent', polarity, percent_value })
 
@@ -77,6 +77,36 @@ test('approve is disabled once the approvals gate passes', () => {
   assert.ok(renderPanel(view).includes('<button id="approve" class="primary">Approve</button>'))
   view.trail = { ...view.trail, gates: [{ key: 'approvals', status: 'passed', rationale: '1 approval(s) recorded' }] }
   assert.ok(renderPanel(view).includes('<button id="approve" class="primary" disabled>Approved</button>'))
+})
+
+const looseEnds = {
+  key: 'loose_ends',
+  label: 'Loose Ends',
+  value_type: 'boolean',
+  polarity: 'lower_is_better',
+  boolean_value: true,
+  rationale: '2 loose ends\n• doc never written\n• question unanswered',
+  head_sha: 'bbbbbbb1'
+}
+
+test('score prompts are one line, capped, and worded for the score', () => {
+  const clear = scorePrompt(looseEnds, 7)
+  assert.ok(!clear.includes('\n'))
+  assert.ok(clear.startsWith("Clear up the loose ends that Entire Trail #7's Loose Ends runner found on bbbbbbb."))
+  assert.ok(clear.includes('2 loose ends • doc never written • question unanswered'))
+  const risk = { key: 'risk', label: 'Risk', ...percent('lower_is_better', 27), rationale: 'x'.repeat(5000), head_sha: 'bbbbbbb1' }
+  const lower = scorePrompt(risk, 7)
+  assert.ok(lower.startsWith('Lower the Risk score Entire Trail #7 gave bbbbbbb (now 27%)'))
+  assert.ok(lower.length < 4096)
+})
+
+test('ask buttons need an agent and a score that can improve', () => {
+  const monitors = [looseEnds, { key: 'risk', label: 'Risk', ...percent('lower_is_better', 0), rationale: 'none', head_sha: 'bbbbbbb1' }]
+  const withAgent = renderPanel(readyView({ terminalId: 'term_1', agent: { terminalId: 'term_a', name: 'Claude' }, monitors }))
+  assert.ok(withAgent.includes('data-agent="term_a" data-agent-name="Claude"'))
+  assert.equal(withAgent.match(/class="ask"/g).length, 1)
+  assert.ok(withAgent.includes('Ask Claude to clear these up'))
+  assert.ok(!renderPanel(readyView({ terminalId: 'term_1', monitors })).includes('class="ask"'))
 })
 
 test('failed checks sort first', () => {
