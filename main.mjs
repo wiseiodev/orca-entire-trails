@@ -8,8 +8,11 @@ import { fileURLToPath } from 'node:url'
 import { renderPanel } from './render.mjs'
 
 const PANEL_PATH = fileURLToPath(new URL('./panel.html', import.meta.url))
-const POLL_MS = 5_000
+const POLL_MS = 1_000
 const RECHECK_MS = 30_000
+const WATCH_RESTART_MS = 5_000
+const DISCUSSION_POLL_MS = 60_000
+const DISCUSSION_LIMIT = 10
 const REFRESH_DEBOUNCE_MS = 1_500
 const PUBLISH_DEBOUNCE_MS = 300
 const AGENT_REFRESH_DEBOUNCE_MS = 2_000
@@ -68,6 +71,13 @@ function pickTrail(trail) {
   }
 }
 
+const pickMessage = (message) => ({
+  author: message.author,
+  createdAt: message.createdAt,
+  body: message.body ?? '',
+  replies: (message.replies ?? []).map(pickMessage)
+})
+
 function pickFindings(result) {
   return {
     counts: result.counts,
@@ -94,6 +104,9 @@ export default function activate(orca) {
   let publishTimer = null
   let agentTimer = null
   let forceTimer = null
+  let working = false
+  let lastDiscussionCheck = 0
+  const discussionCache = new Map()
 
   const log = (error) => orca.log(error instanceof Error ? error.message : String(error))
 
@@ -249,6 +262,10 @@ export default function activate(orca) {
       log(error)
       return null
     })
+    const discussions = await fetchDiscussions(trail.number, cwd).catch((error) => {
+      log(error)
+      return null
+    })
     if (refreshGeneration !== generation) return
     if (!focus.terminalId && trail.status === 'open') {
       focus.terminalId = await ensureTerminal(cwd).catch((error) => {
@@ -270,6 +287,7 @@ export default function activate(orca) {
       branch,
       trail: pickTrail(trail),
       findings: findings && pickFindings(findings),
+      discussions,
       terminalId: focus.terminalId,
       agents,
       refreshPath: join(REFRESH_DIR, REFRESH_FILE)
@@ -278,12 +296,66 @@ export default function activate(orca) {
     await publish()
   }
 
-  async function focusBranch(branch) {
+  // Discussions emit no watch events, so they are listed on refresh and on a slow poll.
+  // A thread is only re-read when its last message changes.
+  async function fetchDiscussions(trailNumber, cwd) {
+    lastDiscussionCheck = Date.now()
+    const trailArgs = ['--trail', String(trailNumber), '--json']
+    const listed = await runJson('entire', ['trail', 'comment', 'list', ...trailArgs], cwd)
+    const items = listed.items
+      .filter((item) => item.kind === 'discussion')
+      .sort(
+        (a, b) =>
+          Number(a.resolved) - Number(b.resolved) || b.lastMessageAt.localeCompare(a.lastMessageAt)
+      )
+      .slice(0, DISCUSSION_LIMIT)
+    const discussions = []
+    for (const item of items) {
+      let cached = discussionCache.get(item.id)
+      if (cached?.lastMessageAt !== item.lastMessageAt) {
+        const shown = await runJson('entire', ['trail', 'comment', 'show', item.id, ...trailArgs], cwd)
+        cached = { lastMessageAt: item.lastMessageAt, messages: shown.messages.map(pickMessage) }
+        discussionCache.set(item.id, cached)
+      }
+      discussions.push({
+        title: item.title,
+        resolved: item.resolved,
+        messageCount: item.messageCount,
+        lastMessageAt: item.lastMessageAt,
+        messages: cached.messages
+      })
+    }
+    return discussions
+  }
+
+  async function refreshDiscussions() {
+    if (state.status !== 'ready' || !focus?.cwd) return
+    const discussionsGeneration = generation
+    const discussions = await fetchDiscussions(state.trail.number, focus.cwd)
+    if (discussionsGeneration !== generation || state.status !== 'ready') return
+    state = { ...state, discussions }
+    await publish()
+  }
+
+  function work(task) {
+    working = true
+    task()
+      .catch(log)
+      .finally(() => {
+        working = false
+      })
+  }
+
+  async function focusBranch(branch, announce) {
     const focusGeneration = ++generation
     stopWatch()
     monitors = new Map()
     focus = { branch, cwd: null, terminalId: null }
     lastCheck = Date.now()
+    if (announce) {
+      state = { status: 'loading', branch }
+      await publish()
+    }
     try {
       const shown = await runJson(ORCA_BIN, [
         'worktree',
@@ -310,12 +382,19 @@ export default function activate(orca) {
       const branch = context?.branch?.replace(/^refs\/heads\//, '')
       // Keep the last trail when nothing is focused (e.g. settings) instead of blanking the panel.
       if (!branch) return
+      // Focus changes start right away; work for the old branch is dropped by its stale generation.
       if (branch !== focus?.branch) {
-        await focusBranch(branch)
-      } else if (!focus.cwd || state.status !== 'ready') {
-        if (Date.now() - lastCheck >= RECHECK_MS) await (focus.cwd ? refresh() : focusBranch(branch))
-      } else if (!watcher) {
-        await refresh()
+        focusBranch(branch, true).catch(log)
+        return
+      }
+      if (working) return
+      const sinceCheck = Date.now() - lastCheck
+      if (!focus.cwd || state.status !== 'ready') {
+        if (sinceCheck >= RECHECK_MS) work(() => (focus.cwd ? refresh() : focusBranch(branch, false)))
+      } else if (!watcher && sinceCheck >= WATCH_RESTART_MS) {
+        work(refresh)
+      } else if (Date.now() - lastDiscussionCheck >= DISCUSSION_POLL_MS) {
+        work(refreshDiscussions)
       }
     } finally {
       polling = false

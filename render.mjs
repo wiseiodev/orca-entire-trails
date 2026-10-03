@@ -174,6 +174,37 @@ function renderFindings(findings) {
     .join('\n')
 }
 
+const formatTime = (iso) =>
+  new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+
+function renderMessage(message) {
+  const replies = message.replies.map(renderMessage).join('')
+  return `<div class="message"><div class="meta">${escapeHtml(message.author)} · ${escapeHtml(formatTime(message.createdAt))}</div><p class="detail">${escapeHtml(message.body)}</p>${replies ? `<div class="replies">${replies}</div>` : ''}</div>`
+}
+
+function renderDiscussions(discussions) {
+  if (!discussions) {
+    return '<p class="empty">Discussions unavailable.</p>'
+  }
+  if (discussions.length === 0) {
+    return '<p class="empty">No discussions yet.</p>'
+  }
+  return discussions
+    .map(
+      (discussion) => `<details class="discussion${discussion.resolved ? ' stale' : ''}">
+  <summary><span class="thread-title">${escapeHtml(discussion.title)}</span><span class="detail">${discussion.resolved ? 'resolved · ' : ''}${escapeHtml(discussion.messageCount)}</span></summary>
+  ${discussion.messages.map(renderMessage).join('')}
+</details>`
+    )
+    .join('\n')
+}
+
+function discussionsCount(discussions) {
+  if (!discussions) return ''
+  const open = discussions.filter((discussion) => !discussion.resolved).length
+  return `${open} open`
+}
+
 function findingsCount(findings) {
   if (!findings) return ''
   const { Open = 0, OpenHigh = 0, OpenMedium = 0, OpenLow = 0 } = findings.counts ?? {}
@@ -266,6 +297,10 @@ const PANEL_SCRIPT = `${shellQuote.toString()}
       if (sent && onSent) onSent()
     })
   }
+  // Discussions and approvals emit nothing the worker can watch, so a successful command asks it to reload.
+  function thenRefresh(command) {
+    return root.dataset.refreshPath ? command + ' && touch ' + shellQuote(root.dataset.refreshPath) : command
+  }
   Array.prototype.forEach.call(document.querySelectorAll('.ask'), function (button) {
     button.addEventListener('click', function () {
       var name = button.dataset.agentName
@@ -302,13 +337,13 @@ const PANEL_SCRIPT = `${shellQuote.toString()}
     clearTimeout(armed)
     armed = null
     approve.textContent = 'Approve'
-    runEntire('entire trail approve ' + root.dataset.trail)
+    runEntire(thenRefresh('entire trail approve ' + root.dataset.trail))
   })
   var comment = document.getElementById('comment')
   document.getElementById('post').addEventListener('click', function () {
     var text = comment.value.trim()
     if (!text) return
-    runEntire('entire trail comment add --trail ' + root.dataset.trail + ' -m ' + shellQuote(text), function () {
+    runEntire(thenRefresh('entire trail comment add --trail ' + root.dataset.trail + ' -m ' + shellQuote(text)), function () {
       comment.value = ''
     })
   })
@@ -332,7 +367,7 @@ function renderActions(view) {
   return {
     approve: `<div class="actions" id="trail-actions" data-terminal="${escapeHtml(view.terminalId)}" data-trail="${escapeHtml(view.trail.number)}" data-refresh-path="${escapeHtml(view.refreshPath ?? '')}">${approveButton}${view.refreshPath ? '<button id="refresh" title="Reload the trail, findings, and agent tabs">Refresh</button>' : ''}<span id="action-status" class="detail"></span></div>`,
     comment:
-      '<section><h2>Comment</h2><textarea id="comment" rows="3" maxlength="1800" placeholder="Start a discussion on this trail"></textarea><button id="post">Post comment</button></section>'
+      '<textarea id="comment" rows="3" maxlength="1800" placeholder="Start a discussion on this trail"></textarea><button id="post">Post comment</button>'
   }
 }
 
@@ -361,8 +396,10 @@ ${actions.approve}
 <section><h2>Gates</h2>${renderGates(trail.gates)}</section>
 <section><h2>Checks <span class="count">${escapeHtml(checksCount(trail.checks))}</span></h2>${renderChecks(trail.checks)}</section>
 <section><h2>Findings <span class="count">${escapeHtml(findingsCount(view.findings))}</span></h2>${renderFindings(view.findings)}</section>
-${actions.comment}`
+<section><h2>Discussion <span class="count">${escapeHtml(discussionsCount(view.discussions))}</span></h2>${renderDiscussions(view.discussions)}${actions.comment}</section>`
     }
+    case 'loading':
+      return `<p class="message">Loading the trail for <code>${escapeHtml(view.branch)}</code>…</p>`
     case 'no-trail':
       return `<p class="message">No open Entire trail for <code>${escapeHtml(view.branch)}</code>. Trails attach after the first push and detach when the PR merges.</p>`
     case 'error':
@@ -435,6 +472,12 @@ export function renderPanel(view, updatedAt) {
   .delta { flex: none; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .delta.good { color: var(--good); }
   .delta.bad { color: var(--bad); }
+  .thread-title { flex: 1; min-width: 0; }
+  .message { margin: 0 0 8px; }
+  .message .meta { margin: 0 0 2px; }
+  .message .detail { margin: 0; }
+  .replies { margin: 6px 0 0 10px; padding-left: 8px; border-left: 2px solid var(--border, #333); }
+  .discussion + textarea, .empty + textarea { margin-top: 8px; }
   .history { margin: 0 0 8px; font-size: 11px; color: var(--muted-foreground, #999); font-variant-numeric: tabular-nums; }
   button { padding: 4px 10px; border: 1px solid var(--border, #444); border-radius: 6px; background: var(--secondary, #2a2a2a); color: var(--foreground, #ddd); font: inherit; cursor: pointer; }
   button.primary { border-color: transparent; background: var(--primary, #ddd); color: var(--primary-foreground, #111); }

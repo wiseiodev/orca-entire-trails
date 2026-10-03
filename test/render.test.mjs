@@ -154,6 +154,31 @@ test('refresh touches the worker signal file through the Entire terminal', () =>
   assert.ok(!renderPanel(readyView({ terminalId: 'term_1' })).includes('<button id="refresh"'))
 })
 
+test('discussions list open threads with their messages and replies', () => {
+  const discussions = [
+    {
+      title: 'Ground control to Major Tom?',
+      resolved: false,
+      messageCount: 1,
+      lastMessageAt: '2026-10-03T04:12:02.187Z',
+      messages: [
+        {
+          author: 'dubscode',
+          createdAt: '2026-10-03T04:12:02.187Z',
+          body: 'Ground control to Major Tom?',
+          replies: [{ author: 'claude', createdAt: '2026-10-03T04:13:00.000Z', body: '<b>here</b>', replies: [] }]
+        }
+      ]
+    }
+  ]
+  const html = renderPanel(readyView({ terminalId: 'term_1', discussions }))
+  assert.ok(html.includes('<h2>Discussion <span class="count">1 open</span></h2>'))
+  assert.ok(html.includes('<span class="thread-title">Ground control to Major Tom?</span>'))
+  assert.ok(html.includes('<div class="replies">'))
+  assert.ok(html.includes('&lt;b&gt;here&lt;/b&gt;'))
+  assert.ok(html.includes('id="post"'))
+})
+
 test('failed checks sort first', () => {
   const view = readyView({})
   view.trail = {
