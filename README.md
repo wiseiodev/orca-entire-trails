@@ -143,3 +143,7 @@ the manifest.
 ```sh
 npm test
 ```
+
+## License
+
+[MIT](LICENSE)
