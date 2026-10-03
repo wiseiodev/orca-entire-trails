@@ -13,8 +13,9 @@ It runs the `entire` CLI you already have. Scores update live from `entire trail
 
 ## Install
 
-Clone the repo, then in Orca open **Settings → Plugins**, add the clone folder as a
-development plugin, and approve it.
+Clone the repo, then in Orca open **Settings → Plugins → Development**, add the clone folder,
+and approve it. Don't install it from a local path: Orca copies and hash-locks installed plugins,
+so the panel can never update.
 
 ```sh
 git clone https://github.com/wiseiodev/orca-entire-trails.git

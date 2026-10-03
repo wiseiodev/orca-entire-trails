@@ -131,7 +131,7 @@ function renderBody(view) {
     case 'error':
       return `<p class="message">Couldn't read the trail for <code>${escapeHtml(view.branch)}</code>.</p><pre class="error">${escapeHtml(view.error)}</pre>`
     default:
-      return '<p class="message">Waiting for Entire… If this stays, run <b>Entire Trails: Refresh</b> from the command palette.</p>'
+      return '<p class="message">Waiting for Entire… If this stays, check that this folder was added under <b>Settings → Plugins → Development</b>. Orca locks installed copies, so the panel can\'t update there.</p>'
   }
 }
 
