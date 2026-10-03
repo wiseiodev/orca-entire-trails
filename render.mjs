@@ -80,6 +80,37 @@ function renderAsk(monitor, ask) {
   return `<div class="ask-row" data-prompt="${escapeHtml(scorePrompt(monitor, ask.trailNumber))}"><span>${askVerb(monitor)}</span>${buttons}</div>`
 }
 
+function pointValue(monitor, point) {
+  return monitorValue({ value_type: monitor.value_type, ...point })
+}
+
+function renderDelta(monitor) {
+  const history = monitor.history ?? []
+  const previous = history.length > 1 ? history[history.length - 2] : null
+  if (!previous) return ''
+  const lowerIsBetter = monitor.polarity === 'lower_is_better'
+  const since = `Change since ${shortSha(previous.sha)}`
+  if (monitor.value_type === 'boolean') {
+    if (previous.boolean_value == null || previous.boolean_value === monitor.boolean_value) return ''
+    const improved = monitor.boolean_value !== lowerIsBetter
+    return `<span class="delta ${improved ? 'good' : 'bad'}" title="${escapeHtml(since)}">${improved ? 'cleared' : 'new'}</span>`
+  }
+  if (previous.percent_value == null || monitor.percent_value == null) return ''
+  const change = monitor.percent_value - previous.percent_value
+  if (change === 0) return ''
+  const improved = lowerIsBetter ? change < 0 : change > 0
+  return `<span class="delta ${improved ? 'good' : 'bad'}" title="${escapeHtml(since)}">${change > 0 ? '▲' : '▼'}${Math.abs(change)}</span>`
+}
+
+function renderHistory(monitor) {
+  const history = monitor.history ?? []
+  if (history.length < 2) return ''
+  const points = history
+    .map((point) => `<span title="${escapeHtml(shortSha(point.sha))}">${escapeHtml(pointValue(monitor, point))}</span>`)
+    .join(' → ')
+  return `<p class="history">History by commit: ${points}</p>`
+}
+
 function renderScores(monitors, headSha, ask) {
   if (monitors.length === 0) {
     return '<p class="empty">No runner scores yet.</p>'
@@ -96,8 +127,9 @@ function renderScores(monitors, headSha, ask) {
           ? `<span class="bar"><i style="width:${Math.max(0, Math.min(100, monitor.percent_value))}%"></i></span>`
           : '<span class="bar bar-empty"></span>'
       return `<details class="row ${monitorTone(monitor)}${stale ? ' stale' : ''}">
-  <summary><span class="dot"></span><span class="label">${escapeHtml(monitor.label)}</span>${bar}<span class="value">${escapeHtml(monitorValue(monitor))}</span></summary>
+  <summary><span class="dot"></span><span class="label">${escapeHtml(monitor.label)}</span>${bar}${renderDelta(monitor)}<span class="value">${escapeHtml(monitorValue(monitor))}</span></summary>
   <p class="detail">${escapeHtml(monitor.rationale)}${stale ? ` <span class="sha">(${escapeHtml(shortSha(monitor.head_sha))})</span>` : ''}</p>
+  ${renderHistory(monitor)}
   ${ask && improvable(monitor) ? renderAsk(monitor, ask) : ''}
 </details>`
     })
@@ -377,6 +409,10 @@ export function renderPanel(view, updatedAt) {
   .actions .detail { margin: 0; font-size: 11px; }
   .ask-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 11px; color: var(--muted-foreground, #999); }
   .ask { font-size: 11px; }
+  .delta { flex: none; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .delta.good { color: var(--good); }
+  .delta.bad { color: var(--bad); }
+  .history { margin: 0 0 8px; font-size: 11px; color: var(--muted-foreground, #999); font-variant-numeric: tabular-nums; }
   button { padding: 4px 10px; border: 1px solid var(--border, #444); border-radius: 6px; background: var(--secondary, #2a2a2a); color: var(--foreground, #ddd); font: inherit; cursor: pointer; }
   button.primary { border-color: transparent; background: var(--primary, #ddd); color: var(--primary-foreground, #111); }
   button:disabled { opacity: .55; cursor: default; }

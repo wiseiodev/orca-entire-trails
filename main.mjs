@@ -12,6 +12,7 @@ const RECHECK_MS = 30_000
 const REFRESH_DEBOUNCE_MS = 1_500
 const PUBLISH_DEBOUNCE_MS = 300
 const AGENT_REFRESH_DEBOUNCE_MS = 2_000
+const HISTORY_LIMIT = 20
 const TERMINALS_KEY = 'entire-terminals'
 const ORCA_APP_CLI = '/Applications/Orca.app/Contents/Resources/bin/orca'
 const ORCA_BIN = existsSync(ORCA_APP_CLI) ? ORCA_APP_CLI : 'orca'
@@ -141,6 +142,15 @@ export default function activate(orca) {
       }
       if (data?.event_type === 'monitor.updated') {
         const { monitor_key: key, ...monitor } = data.payload
+        // The replay is chronological, so the last score per commit wins and history stays ordered.
+        const history = (monitors.get(key)?.history ?? []).filter(
+          (point) => point.sha !== monitor.head_sha
+        )
+        history.push({
+          sha: monitor.head_sha,
+          percent_value: monitor.percent_value,
+          boolean_value: monitor.boolean_value
+        })
         monitors.set(key, {
           key,
           label: monitor.label,
@@ -149,7 +159,8 @@ export default function activate(orca) {
           percent_value: monitor.percent_value,
           boolean_value: monitor.boolean_value,
           rationale: monitor.rationale,
-          head_sha: monitor.head_sha
+          head_sha: monitor.head_sha,
+          history: history.slice(-HISTORY_LIMIT)
         })
         schedulePublish()
       } else if (data?.event_type) {

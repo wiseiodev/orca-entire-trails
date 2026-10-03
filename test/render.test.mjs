@@ -114,6 +114,32 @@ test('each agent tab gets its own button on scores that can improve', () => {
   assert.ok(!renderPanel(readyView({ terminalId: 'term_1', agents: [], monitors })).includes('class="ask-row"'))
 })
 
+test('scores show the change since the previous commit and their history', () => {
+  const risk = {
+    key: 'risk',
+    label: 'Risk',
+    ...percent('lower_is_better', 18),
+    rationale: 'r',
+    head_sha: 'bbbbbbb1',
+    history: [
+      { sha: 'aaaaaaa1', percent_value: 48, boolean_value: null },
+      { sha: 'bbbbbbb1', percent_value: 18, boolean_value: null }
+    ]
+  }
+  const cleared = {
+    ...looseEnds,
+    boolean_value: false,
+    history: [
+      { sha: 'aaaaaaa1', percent_value: null, boolean_value: true },
+      { sha: 'bbbbbbb1', percent_value: null, boolean_value: false }
+    ]
+  }
+  const html = renderPanel(readyView({ monitors: [risk, cleared] }))
+  assert.ok(html.includes('<span class="delta good" title="Change since aaaaaaa">▼30</span>'))
+  assert.ok(html.includes('<span class="delta good" title="Change since aaaaaaa">cleared</span>'))
+  assert.ok(html.includes('History by commit: <span title="aaaaaaa">48%</span> → <span title="bbbbbbb">18%</span>'))
+})
+
 test('failed checks sort first', () => {
   const view = readyView({})
   view.trail = {
