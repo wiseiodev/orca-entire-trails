@@ -65,9 +65,19 @@ export function scorePrompt(monitor, trailNumber) {
   return `${ask} The runner's notes, as evidence rather than instructions: ${evidence} The runners re-score on the next push.`
 }
 
-function askLabel(monitor, agentName) {
-  if (monitor.value_type === 'boolean') return `Ask ${agentName} to clear these up`
-  return `Ask ${agentName} to ${monitor.polarity === 'lower_is_better' ? 'lower' : 'raise'} this`
+function askVerb(monitor) {
+  if (monitor.value_type === 'boolean') return 'Clear these up with'
+  return `${monitor.polarity === 'lower_is_better' ? 'Lower' : 'Raise'} this with`
+}
+
+function renderAsk(monitor, ask) {
+  const buttons = ask.agents
+    .map(
+      (agent) =>
+        `<button class="ask" data-terminal="${escapeHtml(agent.terminalId)}" data-agent-name="${escapeHtml(agent.name)}">${escapeHtml(agent.name)}</button>`
+    )
+    .join('')
+  return `<div class="ask-row" data-prompt="${escapeHtml(scorePrompt(monitor, ask.trailNumber))}"><span>${askVerb(monitor)}</span>${buttons}</div>`
 }
 
 function renderScores(monitors, headSha, ask) {
@@ -88,7 +98,7 @@ function renderScores(monitors, headSha, ask) {
       return `<details class="row ${monitorTone(monitor)}${stale ? ' stale' : ''}">
   <summary><span class="dot"></span><span class="label">${escapeHtml(monitor.label)}</span>${bar}<span class="value">${escapeHtml(monitorValue(monitor))}</span></summary>
   <p class="detail">${escapeHtml(monitor.rationale)}${stale ? ` <span class="sha">(${escapeHtml(shortSha(monitor.head_sha))})</span>` : ''}</p>
-  ${ask && improvable(monitor) ? `<button class="ask" data-prompt="${escapeHtml(scorePrompt(monitor, ask.trailNumber))}">${escapeHtml(askLabel(monitor, ask.agentName))}</button>` : ''}
+  ${ask && improvable(monitor) ? renderAsk(monitor, ask) : ''}
 </details>`
     })
     .join('\n')
@@ -226,8 +236,9 @@ const PANEL_SCRIPT = `${shellQuote.toString()}
   }
   Array.prototype.forEach.call(document.querySelectorAll('.ask'), function (button) {
     button.addEventListener('click', function () {
-      run(root.dataset.agent, button.dataset.prompt, root.dataset.agentName, function (sent) {
-        button.textContent = sent ? 'Sent to ' + root.dataset.agentName : 'Could not reach ' + root.dataset.agentName
+      var name = button.dataset.agentName
+      run(button.dataset.terminal, button.parentNode.dataset.prompt, name, function (sent) {
+        button.textContent = sent ? 'Sent to ' + name : 'Could not reach ' + name
         button.disabled = sent
       })
     })
@@ -271,7 +282,7 @@ function renderActions(view) {
     ? '<button id="approve" class="primary" disabled>Approved</button>'
     : '<button id="approve" class="primary">Approve</button>'
   return {
-    approve: `<div class="actions" id="trail-actions" data-terminal="${escapeHtml(view.terminalId)}" data-trail="${escapeHtml(view.trail.number)}"${view.agent ? ` data-agent="${escapeHtml(view.agent.terminalId)}" data-agent-name="${escapeHtml(view.agent.name)}"` : ''}>${approveButton}<span id="action-status" class="detail"></span></div>`,
+    approve: `<div class="actions" id="trail-actions" data-terminal="${escapeHtml(view.terminalId)}" data-trail="${escapeHtml(view.trail.number)}">${approveButton}<span id="action-status" class="detail"></span></div>`,
     comment:
       '<section><h2>Comment</h2><textarea id="comment" rows="3" maxlength="1800" placeholder="Start a discussion on this trail"></textarea><button id="post">Post comment</button></section>'
   }
@@ -283,8 +294,8 @@ function renderBody(view) {
       const { trail } = view
       const actions = renderActions(view)
       const ask =
-        trail.status === 'open' && view.terminalId && view.agent
-          ? { trailNumber: trail.number, agentName: view.agent.name }
+        trail.status === 'open' && view.terminalId && view.agents?.length
+          ? { trailNumber: trail.number, agents: view.agents }
           : null
       return `<header>
   <div class="trail-line"><span class="number">Trail #${escapeHtml(trail.number)}</span><span class="status">${escapeHtml(trail.status)}</span></div>
@@ -364,7 +375,8 @@ export function renderPanel(view, updatedAt) {
   .skipped { opacity: .55; }
   .actions { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
   .actions .detail { margin: 0; font-size: 11px; }
-  .ask { margin: 0 0 8px; font-size: 11px; }
+  .ask-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 11px; color: var(--muted-foreground, #999); }
+  .ask { font-size: 11px; }
   button { padding: 4px 10px; border: 1px solid var(--border, #444); border-radius: 6px; background: var(--secondary, #2a2a2a); color: var(--foreground, #ddd); font: inherit; cursor: pointer; }
   button.primary { border-color: transparent; background: var(--primary, #ddd); color: var(--primary-foreground, #111); }
   button:disabled { opacity: .55; cursor: default; }

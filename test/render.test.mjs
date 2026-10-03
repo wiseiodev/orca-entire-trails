@@ -100,13 +100,18 @@ test('score prompts are one line, capped, and worded for the score', () => {
   assert.ok(lower.length < 4096)
 })
 
-test('ask buttons need an agent and a score that can improve', () => {
+test('each agent tab gets its own button on scores that can improve', () => {
   const monitors = [looseEnds, { key: 'risk', label: 'Risk', ...percent('lower_is_better', 0), rationale: 'none', head_sha: 'bbbbbbb1' }]
-  const withAgent = renderPanel(readyView({ terminalId: 'term_1', agent: { terminalId: 'term_a', name: 'Claude' }, monitors }))
-  assert.ok(withAgent.includes('data-agent="term_a" data-agent-name="Claude"'))
-  assert.equal(withAgent.match(/class="ask"/g).length, 1)
-  assert.ok(withAgent.includes('Ask Claude to clear these up'))
-  assert.ok(!renderPanel(readyView({ terminalId: 'term_1', monitors })).includes('class="ask"'))
+  const agents = [
+    { terminalId: 'term_a', name: 'Claude' },
+    { terminalId: 'term_b', name: 'Codex' }
+  ]
+  const html = renderPanel(readyView({ terminalId: 'term_1', agents, monitors }))
+  assert.equal(html.match(/class="ask-row"/g).length, 1)
+  assert.ok(html.includes('<span>Clear these up with</span>'))
+  assert.ok(html.includes('data-terminal="term_a" data-agent-name="Claude">Claude</button>'))
+  assert.ok(html.includes('data-terminal="term_b" data-agent-name="Codex">Codex</button>'))
+  assert.ok(!renderPanel(readyView({ terminalId: 'term_1', agents: [], monitors })).includes('class="ask-row"'))
 })
 
 test('failed checks sort first', () => {

@@ -11,6 +11,7 @@ const POLL_MS = 5_000
 const RECHECK_MS = 30_000
 const REFRESH_DEBOUNCE_MS = 1_500
 const PUBLISH_DEBOUNCE_MS = 300
+const AGENT_REFRESH_DEBOUNCE_MS = 2_000
 const TERMINALS_KEY = 'entire-terminals'
 const ORCA_APP_CLI = '/Applications/Orca.app/Contents/Resources/bin/orca'
 const ORCA_BIN = existsSync(ORCA_APP_CLI) ? ORCA_APP_CLI : 'orca'
@@ -86,6 +87,7 @@ export default function activate(orca) {
   let polling = false
   let refreshTimer = null
   let publishTimer = null
+  let agentTimer = null
 
   const log = (error) => orca.log(error instanceof Error ? error.message : String(error))
 
@@ -179,14 +181,32 @@ export default function activate(orca) {
     return handle
   }
 
-  async function findAgent(cwd) {
+  // Every agent tab in tab order, so each button names exactly where its prompt goes.
+  async function findAgents(cwd) {
     const listed = await runJson(ORCA_BIN, ['terminal', 'list', '--worktree', `path:${cwd}`, '--json'])
-    const agent = listed.result.terminals
+    const seen = {}
+    return listed.result.terminals
       .filter((terminal) => terminal.agentIdentity)
-      .sort((a, b) => (b.lastOutputAt ?? 0) - (a.lastOutputAt ?? 0))[0]
-    if (!agent) return null
-    const name = agent.agentIdentity
-    return { terminalId: agent.handle, name: name.charAt(0).toUpperCase() + name.slice(1) }
+      .map((terminal) => {
+        const base =
+          terminal.agentIdentity.charAt(0).toUpperCase() + terminal.agentIdentity.slice(1)
+        seen[base] = (seen[base] ?? 0) + 1
+        return { terminalId: terminal.handle, name: seen[base] > 1 ? `${base} ${seen[base]}` : base }
+      })
+  }
+
+  async function refreshAgents() {
+    if (state.status !== 'ready' || state.trail.status !== 'open' || !focus?.cwd) return
+    const agentsGeneration = generation
+    const agents = await findAgents(focus.cwd)
+    if (agentsGeneration !== generation || state.status !== 'ready') return
+    state = { ...state, agents }
+    await publish()
+  }
+
+  function scheduleAgentRefresh() {
+    clearTimeout(agentTimer)
+    agentTimer = setTimeout(() => refreshAgents().catch(log), AGENT_REFRESH_DEBOUNCE_MS)
   }
 
   async function refresh() {
@@ -221,13 +241,13 @@ export default function activate(orca) {
       })
       if (refreshGeneration !== generation) return
     }
-    const agent =
+    const agents =
       trail.status === 'open'
-        ? await findAgent(cwd).catch((error) => {
+        ? await findAgents(cwd).catch((error) => {
             log(error)
-            return null
+            return []
           })
-        : null
+        : []
     if (refreshGeneration !== generation) return
     state = {
       status: 'ready',
@@ -235,7 +255,7 @@ export default function activate(orca) {
       trail: pickTrail(trail),
       findings: findings && pickFindings(findings),
       terminalId: focus.terminalId,
-      agent
+      agents
     }
     if (!watcher) startWatch(trail.number, cwd, refreshGeneration)
     await publish()
@@ -298,8 +318,10 @@ export default function activate(orca) {
     return { opened: true }
   })
 
-  // Subscribing activates the worker; the poll loop does the work.
-  orca.events.on('agent.status.changed', () => {})
+  // Subscribing activates the worker. Agent activity in the focused worktree may mean a new agent tab.
+  orca.events.on('agent.status.changed', (payload) => {
+    if (focus?.cwd && payload?.worktreeId?.endsWith(`::${focus.cwd}`)) scheduleAgentRefresh()
+  })
   orca.events.on('worktree.created', () => {})
 
   const interval = setInterval(() => poll().catch(log), POLL_MS)
@@ -309,6 +331,7 @@ export default function activate(orca) {
     clearInterval(interval)
     clearTimeout(refreshTimer)
     clearTimeout(publishTimer)
+    clearTimeout(agentTimer)
     generation += 1
     stopWatch()
   }
