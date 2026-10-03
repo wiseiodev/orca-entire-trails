@@ -1,7 +1,8 @@
 import { execFile, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, watch } from 'node:fs'
 import { rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { renderPanel } from './render.mjs'
@@ -13,6 +14,9 @@ const REFRESH_DEBOUNCE_MS = 1_500
 const PUBLISH_DEBOUNCE_MS = 300
 const AGENT_REFRESH_DEBOUNCE_MS = 2_000
 const HISTORY_LIMIT = 20
+// The panel's Refresh button touches this file through the Entire terminal; it has no other way to reach the worker.
+const REFRESH_DIR = join(homedir(), '.cache', 'orca-entire-trails')
+const REFRESH_FILE = 'refresh'
 const TERMINALS_KEY = 'entire-terminals'
 const ORCA_APP_CLI = '/Applications/Orca.app/Contents/Resources/bin/orca'
 const ORCA_BIN = existsSync(ORCA_APP_CLI) ? ORCA_APP_CLI : 'orca'
@@ -89,6 +93,7 @@ export default function activate(orca) {
   let refreshTimer = null
   let publishTimer = null
   let agentTimer = null
+  let forceTimer = null
 
   const log = (error) => orca.log(error instanceof Error ? error.message : String(error))
 
@@ -266,7 +271,8 @@ export default function activate(orca) {
       trail: pickTrail(trail),
       findings: findings && pickFindings(findings),
       terminalId: focus.terminalId,
-      agents
+      agents,
+      refreshPath: join(REFRESH_DIR, REFRESH_FILE)
     }
     if (!watcher) startWatch(trail.number, cwd, refreshGeneration)
     await publish()
@@ -316,12 +322,36 @@ export default function activate(orca) {
     }
   }
 
-  orca.commands.register('refresh', async () => {
+  // A full reload: re-read the trail and agents and replay the score stream from the start.
+  async function forceRefresh() {
     lastKey = null
-    if (focus?.cwd) await refresh()
-    else await poll()
+    if (!focus?.cwd) return poll()
+    generation += 1
+    stopWatch()
+    monitors = new Map()
+    await refresh()
+  }
+
+  function scheduleForceRefresh() {
+    clearTimeout(forceTimer)
+    forceTimer = setTimeout(() => forceRefresh().catch(log), PUBLISH_DEBOUNCE_MS)
+  }
+
+  orca.commands.register('refresh', async () => {
+    await forceRefresh()
     return { status: state.status }
   })
+
+  let refreshWatcher = null
+  try {
+    mkdirSync(REFRESH_DIR, { recursive: true })
+    refreshWatcher = watch(REFRESH_DIR, (_event, filename) => {
+      if (filename === REFRESH_FILE) scheduleForceRefresh()
+    })
+    refreshWatcher.on('error', log)
+  } catch (error) {
+    log(error)
+  }
 
   orca.commands.register('open-trail', async () => {
     if (!state.trail?.url) return { opened: false }
@@ -343,6 +373,8 @@ export default function activate(orca) {
     clearTimeout(refreshTimer)
     clearTimeout(publishTimer)
     clearTimeout(agentTimer)
+    clearTimeout(forceTimer)
+    refreshWatcher?.close()
     generation += 1
     stopWatch()
   }

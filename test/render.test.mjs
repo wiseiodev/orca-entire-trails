@@ -147,6 +147,13 @@ test('the trail number links to the trail when the panel can act', () => {
   assert.ok(!renderPanel({ ...view, terminalId: null }).includes('id="open-trail"'))
 })
 
+test('refresh touches the worker signal file through the Entire terminal', () => {
+  const html = renderPanel(readyView({ terminalId: 'term_1', refreshPath: '/Users/x/.cache/orca-entire-trails/refresh' }))
+  assert.ok(html.includes('data-refresh-path="/Users/x/.cache/orca-entire-trails/refresh"'))
+  assert.ok(html.includes('<button id="refresh"'))
+  assert.ok(!renderPanel(readyView({ terminalId: 'term_1' })).includes('<button id="refresh"'))
+})
+
 test('failed checks sort first', () => {
   const view = readyView({})
   view.trail = {

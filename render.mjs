@@ -283,6 +283,14 @@ const PANEL_SCRIPT = `${shellQuote.toString()}
       })
     })
   }
+  var refresh = document.getElementById('refresh')
+  if (refresh) {
+    refresh.addEventListener('click', function () {
+      runEntire('touch ' + shellQuote(root.dataset.refreshPath), function () {
+        status.textContent = 'Refreshing...'
+      })
+    })
+  }
   var approve = document.getElementById('approve')
   var armed = null
   approve.addEventListener('click', function () {
@@ -322,7 +330,7 @@ function renderActions(view) {
     ? '<button id="approve" class="primary" disabled>Approved</button>'
     : '<button id="approve" class="primary">Approve</button>'
   return {
-    approve: `<div class="actions" id="trail-actions" data-terminal="${escapeHtml(view.terminalId)}" data-trail="${escapeHtml(view.trail.number)}">${approveButton}<span id="action-status" class="detail"></span></div>`,
+    approve: `<div class="actions" id="trail-actions" data-terminal="${escapeHtml(view.terminalId)}" data-trail="${escapeHtml(view.trail.number)}" data-refresh-path="${escapeHtml(view.refreshPath ?? '')}">${approveButton}${view.refreshPath ? '<button id="refresh" title="Reload the trail, findings, and agent tabs">Refresh</button>' : ''}<span id="action-status" class="detail"></span></div>`,
     comment:
       '<section><h2>Comment</h2><textarea id="comment" rows="3" maxlength="1800" placeholder="Start a discussion on this trail"></textarea><button id="post">Post comment</button></section>'
   }
@@ -366,7 +374,7 @@ ${actions.comment}`
 
 export function renderPanel(view, updatedAt) {
   const time = updatedAt
-    ? `<footer>Updated ${escapeHtml(updatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</footer>`
+    ? `<footer>Updated ${escapeHtml(updatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }))}</footer>`
     : ''
   return `<!doctype html>
 <html>

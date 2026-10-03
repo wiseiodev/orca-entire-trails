@@ -39,6 +39,10 @@ runs `entire trail approve <n>` there, and **Post comment** runs
 `entire trail comment add --trail <n> -m $'…'` with the text ANSI-C quoted, so you see each
 command and its result. If you close that tab, the worker opens a new one on its next refresh.
 
+**Refresh** forces a full reload: it runs `touch ~/.cache/orca-entire-trails/refresh` in the same
+tab, and the worker, which watches that folder, re-reads the trail, findings, and agent tabs and
+replays the score stream.
+
 A comment you're typing is lost if the panel refreshes, which happens when the trail changes.
 CI and score updates are bursty right after a push, so write longer comments once those settle.
 
