@@ -220,8 +220,14 @@ function renderActions(view) {
       comment: ''
     }
   }
+  const approved = view.trail.gates.some(
+    (gate) => gate.key === 'approvals' && gate.status === 'passed'
+  )
+  const approveButton = approved
+    ? '<button id="approve" class="primary" disabled>Approved</button>'
+    : '<button id="approve" class="primary">Approve</button>'
   return {
-    approve: `<div class="actions" id="trail-actions" data-terminal="${escapeHtml(view.terminalId)}" data-trail="${escapeHtml(view.trail.number)}"><button id="approve" class="primary">Approve</button><span id="action-status" class="detail"></span></div>`,
+    approve: `<div class="actions" id="trail-actions" data-terminal="${escapeHtml(view.terminalId)}" data-trail="${escapeHtml(view.trail.number)}">${approveButton}<span id="action-status" class="detail"></span></div>`,
     comment:
       '<section><h2>Comment</h2><textarea id="comment" rows="3" maxlength="1800" placeholder="Start a discussion on this trail"></textarea><button id="post">Post comment</button></section>'
   }
@@ -312,6 +318,7 @@ export function renderPanel(view, updatedAt) {
   .actions .detail { margin: 0; font-size: 11px; }
   button { padding: 4px 10px; border: 1px solid var(--border, #444); border-radius: 6px; background: var(--secondary, #2a2a2a); color: var(--foreground, #ddd); font: inherit; cursor: pointer; }
   button.primary { border-color: transparent; background: var(--primary, #ddd); color: var(--primary-foreground, #111); }
+  button:disabled { opacity: .55; cursor: default; }
   textarea { box-sizing: border-box; width: 100%; margin-bottom: 6px; padding: 6px 8px; border: 1px solid var(--input, #444); border-radius: 6px; background: transparent; color: inherit; font: inherit; resize: vertical; }
 </style>
 </head>

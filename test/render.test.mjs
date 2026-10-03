@@ -72,6 +72,13 @@ test('actions need an open trail and its Entire terminal', () => {
   assert.ok(!renderPanel(merged).includes('id="approve"'))
 })
 
+test('approve is disabled once the approvals gate passes', () => {
+  const view = readyView({ terminalId: 'term_1' })
+  assert.ok(renderPanel(view).includes('<button id="approve" class="primary">Approve</button>'))
+  view.trail = { ...view.trail, gates: [{ key: 'approvals', status: 'passed', rationale: '1 approval(s) recorded' }] }
+  assert.ok(renderPanel(view).includes('<button id="approve" class="primary" disabled>Approved</button>'))
+})
+
 test('failed checks sort first', () => {
   const view = readyView({})
   view.trail = {
