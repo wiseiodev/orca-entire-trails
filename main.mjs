@@ -57,6 +57,8 @@ function pickTrail(trail) {
     status: trail.status,
     base: trail.base,
     headSha: trail.mergeability?.head_sha ?? null,
+    mergeable: trail.mergeability?.mergeable ?? null,
+    conflictStatus: trail.mergeability?.conflict_status ?? null,
     gates: (trail.mergeability?.gates ?? []).map((gate) => ({
       key: gate.gate_key,
       status: gate.status,
@@ -211,6 +213,19 @@ export default function activate(orca) {
   }
 
   // Every agent tab in tab order, so each button names exactly where its prompt goes.
+  // The repo's preferred allowed method, so `gh pr merge` never stops at its interactive prompt.
+  async function findMergeMethod(cwd) {
+    const repo = await runJson(
+      'gh',
+      ['repo', 'view', '--json', 'squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed'],
+      cwd
+    )
+    if (repo.squashMergeAllowed) return 'squash'
+    if (repo.mergeCommitAllowed) return 'merge'
+    if (repo.rebaseMergeAllowed) return 'rebase'
+    return null
+  }
+
   async function findAgents(cwd) {
     const listed = await runJson(ORCA_BIN, ['terminal', 'list', '--worktree', `path:${cwd}`, '--json'])
     const seen = {}
@@ -274,6 +289,13 @@ export default function activate(orca) {
       })
       if (refreshGeneration !== generation) return
     }
+    if (focus.mergeMethod === undefined && trail.status === 'open') {
+      focus.mergeMethod = await findMergeMethod(cwd).catch((error) => {
+        log(error)
+        return null
+      })
+      if (refreshGeneration !== generation) return
+    }
     const agents =
       trail.status === 'open'
         ? await findAgents(cwd).catch((error) => {
@@ -289,6 +311,7 @@ export default function activate(orca) {
       findings: findings && pickFindings(findings),
       discussions,
       terminalId: focus.terminalId,
+      mergeMethod: focus.mergeMethod ?? null,
       agents,
       refreshPath: join(REFRESH_DIR, REFRESH_FILE)
     }

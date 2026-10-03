@@ -39,6 +39,11 @@ runs `entire trail approve <n>` there, and **Post comment** runs
 `entire trail comment add --trail <n> -m $'…'` with the text ANSI-C quoted, so you see each
 command and its result. If you close that tab, the worker opens a new one on its next refresh.
 
+**Merge** (click twice) runs `gh pr merge --<method>` in the same tab, using the repository's
+preferred allowed method (squash, then merge, then rebase). It is enabled only when every trail gate
+has passed and Entire reports the trail mergeable with no conflicts; otherwise hover it to see what
+it is waiting on. The Entire CLI has no merge command, so this merges the GitHub PR directly.
+
 **Refresh** forces a full reload: it runs `touch ~/.cache/orca-entire-trails/refresh` in the same
 tab, and the worker, which watches that folder, re-reads the trail, findings, and agent tabs and
 replays the score stream.

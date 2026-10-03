@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { test } from 'node:test'
-import { monitorTone, renderPanel, scorePrompt, shellQuote } from '../render.mjs'
+import { mergeBlockers, monitorTone, renderPanel, scorePrompt, shellQuote } from '../render.mjs'
 
 const percent = (polarity, percent_value) => ({ value_type: 'percent', polarity, percent_value })
 
@@ -177,6 +177,26 @@ test('discussions list open threads with their messages and replies', () => {
   assert.ok(html.includes('<div class="replies">'))
   assert.ok(html.includes('&lt;b&gt;here&lt;/b&gt;'))
   assert.ok(html.includes('id="post"'))
+})
+
+test('merge is enabled only when every gate passes and Entire says it can merge', () => {
+  const passed = (key) => ({ key, status: 'passed', rationale: '' })
+  const view = readyView({ terminalId: 'term_1', mergeMethod: 'squash' })
+  view.trail = {
+    ...view.trail,
+    mergeable: true,
+    conflictStatus: 'clean',
+    gates: ['approvals', 'checks', 'findings', 'up_to_date'].map(passed)
+  }
+  assert.deepEqual(mergeBlockers(view.trail), [])
+  assert.ok(renderPanel(view).includes('<button id="merge" class="primary" title="gh pr merge --squash">Merge</button>'))
+  assert.ok(renderPanel(view).includes('data-merge-method="squash"'))
+
+  view.trail = { ...view.trail, gates: [passed('checks'), { key: 'approvals', status: 'failed', rationale: '' }] }
+  assert.deepEqual(mergeBlockers(view.trail), ['Approvals'])
+  assert.ok(renderPanel(view).includes('<button id="merge" disabled title="Waiting on: Approvals">Merge</button>'))
+
+  assert.ok(!renderPanel({ ...view, mergeMethod: null }).includes('id="merge"'))
 })
 
 test('failed checks sort first', () => {

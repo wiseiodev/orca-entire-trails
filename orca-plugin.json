@@ -3,7 +3,7 @@
   "id": "entire-trails",
   "publisher": "wiseiodev",
   "name": "Entire Trails",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Entire Trail runner scores, gates, CI checks, and open findings for the focused worktree, with approve and comment actions.",
   "repository": "https://github.com/wiseiodev/orca-entire-trails",
   "engines": {

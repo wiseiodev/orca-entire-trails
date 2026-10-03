@@ -326,18 +326,28 @@ const PANEL_SCRIPT = `${shellQuote.toString()}
       })
     })
   }
-  var approve = document.getElementById('approve')
-  var armed = null
-  approve.addEventListener('click', function () {
-    if (!armed) {
-      approve.textContent = 'Click again to approve'
-      armed = setTimeout(function () { armed = null; approve.textContent = 'Approve' }, 4000)
-      return
-    }
-    clearTimeout(armed)
-    armed = null
-    approve.textContent = 'Approve'
+  // Consequential actions need a second click within four seconds.
+  function confirmTwice(button, confirmLabel, action) {
+    if (!button || button.disabled) return
+    var label = button.textContent
+    var armed = null
+    button.addEventListener('click', function () {
+      if (!armed) {
+        button.textContent = confirmLabel
+        armed = setTimeout(function () { armed = null; button.textContent = label }, 4000)
+        return
+      }
+      clearTimeout(armed)
+      armed = null
+      button.textContent = label
+      action()
+    })
+  }
+  confirmTwice(document.getElementById('approve'), 'Click again to approve', function () {
     runEntire(thenRefresh('entire trail approve ' + root.dataset.trail))
+  })
+  confirmTwice(document.getElementById('merge'), 'Click again to merge', function () {
+    runEntire(thenRefresh('gh pr merge --' + root.dataset.mergeMethod))
   })
   var comment = document.getElementById('comment')
   document.getElementById('post').addEventListener('click', function () {
@@ -348,6 +358,26 @@ const PANEL_SCRIPT = `${shellQuote.toString()}
     })
   })
 })()`
+
+/** What still blocks a merge, in the trail's own terms. Empty means Entire says it can merge. */
+export function mergeBlockers(trail) {
+  const blockers = trail.gates
+    .filter((gate) => gate.status !== 'passed')
+    .map((gate) => GATE_LABELS[gate.key] ?? gate.key)
+  if (trail.gates.length === 0) blockers.push('gates not reported')
+  if (trail.conflictStatus && trail.conflictStatus !== 'clean') blockers.push('merge conflicts')
+  if (trail.mergeable !== true) blockers.push('mergeability not confirmed')
+  return blockers
+}
+
+function renderMergeButton(view) {
+  if (!view.mergeMethod) return ''
+  const blockers = mergeBlockers(view.trail)
+  if (blockers.length > 0) {
+    return `<button id="merge" disabled title="${escapeHtml(`Waiting on: ${blockers.join(', ')}`)}">Merge</button>`
+  }
+  return `<button id="merge" class="primary" title="${escapeHtml(`gh pr merge --${view.mergeMethod}`)}">Merge</button>`
+}
 
 function renderActions(view) {
   if (view.trail.status !== 'open') return { approve: '', comment: '' }
@@ -365,7 +395,7 @@ function renderActions(view) {
     ? '<button id="approve" class="primary" disabled>Approved</button>'
     : '<button id="approve" class="primary">Approve</button>'
   return {
-    approve: `<div class="actions" id="trail-actions" data-terminal="${escapeHtml(view.terminalId)}" data-trail="${escapeHtml(view.trail.number)}" data-refresh-path="${escapeHtml(view.refreshPath ?? '')}">${approveButton}${view.refreshPath ? '<button id="refresh" title="Reload the trail, findings, and agent tabs">Refresh</button>' : ''}<span id="action-status" class="detail"></span></div>`,
+    approve: `<div class="actions" id="trail-actions" data-terminal="${escapeHtml(view.terminalId)}" data-trail="${escapeHtml(view.trail.number)}" data-refresh-path="${escapeHtml(view.refreshPath ?? '')}" data-merge-method="${escapeHtml(view.mergeMethod ?? '')}">${approveButton}${renderMergeButton(view)}${view.refreshPath ? '<button id="refresh" title="Reload the trail, findings, and agent tabs">Refresh</button>' : ''}<span id="action-status" class="detail"></span></div>`,
     comment:
       '<textarea id="comment" rows="3" maxlength="1800" placeholder="Start a discussion on this trail"></textarea><button id="post">Post comment</button>'
   }
