@@ -275,6 +275,14 @@ const PANEL_SCRIPT = `${shellQuote.toString()}
       })
     })
   })
+  var openTrail = document.getElementById('open-trail')
+  if (openTrail) {
+    openTrail.addEventListener('click', function () {
+      runEntire('open ' + shellQuote(openTrail.dataset.url), function () {
+        status.textContent = 'Opening the trail in your browser.'
+      })
+    })
+  }
   var approve = document.getElementById('approve')
   var armed = null
   approve.addEventListener('click', function () {
@@ -329,8 +337,14 @@ function renderBody(view) {
         trail.status === 'open' && view.terminalId && view.agents?.length
           ? { trailNumber: trail.number, agents: view.agents }
           : null
+      // Panels can't navigate or open windows, so the link opens the trail through the Entire terminal.
+      const linkable =
+        trail.status === 'open' && view.terminalId && /^https:\/\//.test(trail.url ?? '')
+      const number = linkable
+        ? `<button id="open-trail" class="number link" data-url="${escapeHtml(trail.url)}" title="Open in your browser">Trail #${escapeHtml(trail.number)} ↗</button>`
+        : `<span class="number">Trail #${escapeHtml(trail.number)}</span>`
       return `<header>
-  <div class="trail-line"><span class="number">Trail #${escapeHtml(trail.number)}</span><span class="status">${escapeHtml(trail.status)}</span></div>
+  <div class="trail-line">${number}<span class="status">${escapeHtml(trail.status)}</span></div>
   <div class="title">${escapeHtml(trail.title)}</div>
   <div class="meta">${escapeHtml(view.branch)} · ${escapeHtml(shortSha(trail.headSha))} → ${escapeHtml(trail.base)}</div>
 </header>
@@ -364,6 +378,7 @@ export function renderPanel(view, updatedAt) {
   header { margin-bottom: 14px; }
   .trail-line { display: flex; gap: 8px; align-items: center; }
   .number { font-weight: 600; }
+  button.link { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-decoration-color: var(--muted-foreground, #999); text-underline-offset: 3px; }
   .status { padding: 0 6px; border: 1px solid var(--border, #444); border-radius: 999px; color: var(--muted-foreground, #999); font-size: 11px; }
   .title { margin-top: 4px; font-size: 13px; }
   .meta, .count, .note, .empty, .detail, footer, .sha { color: var(--muted-foreground, #999); }

@@ -140,6 +140,13 @@ test('scores show the change since the previous commit and their history', () =>
   assert.ok(html.includes('History by commit: <span title="aaaaaaa">48%</span> → <span title="bbbbbbb">18%</span>'))
 })
 
+test('the trail number links to the trail when the panel can act', () => {
+  const view = readyView({ terminalId: 'term_1' })
+  view.trail = { ...view.trail, url: 'https://entire.io/gh/acme/app/trails/7' }
+  assert.ok(renderPanel(view).includes('<button id="open-trail" class="number link" data-url="https://entire.io/gh/acme/app/trails/7"'))
+  assert.ok(!renderPanel({ ...view, terminalId: null }).includes('id="open-trail"'))
+})
+
 test('failed checks sort first', () => {
   const view = readyView({})
   view.trail = {
