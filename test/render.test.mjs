@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { test } from 'node:test'
-import { monitorTone, renderPanel } from '../render.mjs'
+import { monitorTone, renderPanel, shellQuote } from '../render.mjs'
 
 const percent = (polarity, percent_value) => ({ value_type: 'percent', polarity, percent_value })
 
@@ -18,7 +19,15 @@ test('monitor tone follows each runner polarity', () => {
 const readyView = (overrides) => ({
   status: 'ready',
   branch: 'feature',
-  trail: { number: 7, title: 'feat: x', status: 'open', base: 'main', headSha: 'bbbbbbb1', gates: [] },
+  trail: {
+    number: 7,
+    title: 'feat: x',
+    status: 'open',
+    base: 'main',
+    headSha: 'bbbbbbb1',
+    gates: [],
+    checks: []
+  },
   monitors: [],
   findings: { counts: { Open: 0 }, items: [] },
   ...overrides
@@ -45,4 +54,36 @@ test('scores from an older push are marked stale', () => {
   )
   assert.ok(html.includes("Runners haven't scored bbbbbbb yet"))
   assert.ok(html.includes('class="row good stale"'))
+})
+
+test('comments survive bash and zsh quoting verbatim', () => {
+  const comment = 'it\'s fine\n"quoted" \\ $(rm -rf ~) `whoami` !history\ttab'
+  for (const shell of ['bash', 'zsh']) {
+    const echoed = execFileSync(shell, ['-c', `printf %s ${shellQuote(comment)}`], { encoding: 'utf8' })
+    assert.equal(echoed, comment, shell)
+  }
+})
+
+test('actions need an open trail and its Entire terminal', () => {
+  assert.ok(renderPanel(readyView({ terminalId: 'term_1' })).includes('data-terminal="term_1" data-trail="7"'))
+  assert.ok(!renderPanel(readyView({})).includes('id="approve"'))
+  const merged = readyView({ terminalId: 'term_1' })
+  merged.trail = { ...merged.trail, status: 'merged' }
+  assert.ok(!renderPanel(merged).includes('id="approve"'))
+})
+
+test('failed checks sort first', () => {
+  const view = readyView({})
+  view.trail = {
+    ...view.trail,
+    checks: [
+      { name: 'b-pass', status: 'completed', conclusion: 'success', app: 'GitHub Actions' },
+      { name: 'a-fail', status: 'completed', conclusion: 'failure', app: 'GitHub Actions' },
+      { name: 'c-run', status: 'in_progress', conclusion: null, app: 'GitHub Actions' }
+    ]
+  }
+  const html = renderPanel(view)
+  assert.ok(html.indexOf('a-fail') < html.indexOf('c-run'))
+  assert.ok(html.indexOf('c-run') < html.indexOf('b-pass'))
+  assert.ok(html.includes('1 failed · 1 running · 1 passed'))
 })

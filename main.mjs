@@ -11,6 +11,7 @@ const POLL_MS = 5_000
 const RECHECK_MS = 30_000
 const REFRESH_DEBOUNCE_MS = 1_500
 const PUBLISH_DEBOUNCE_MS = 300
+const TERMINALS_KEY = 'entire-terminals'
 const ORCA_APP_CLI = '/Applications/Orca.app/Contents/Resources/bin/orca'
 const ORCA_BIN = existsSync(ORCA_APP_CLI) ? ORCA_APP_CLI : 'orca'
 // Orca gives plugin workers the app's PATH, which usually lacks the shell additions where entire lives.
@@ -51,6 +52,12 @@ function pickTrail(trail) {
       key: gate.gate_key,
       status: gate.status,
       rationale: gate.rationale
+    })),
+    checks: (trail.mergeability?.checks?.runs ?? []).map((run) => ({
+      name: run.name,
+      status: run.status,
+      conclusion: run.conclusion,
+      app: run.app_name
     }))
   }
 }
@@ -149,6 +156,29 @@ export default function activate(orca) {
     })
   }
 
+  // Panel buttons can only type into a terminal, so each worktree gets one Entire tab for them.
+  // Shells retitle tabs, so the handle is remembered in plugin storage rather than found by title.
+  async function ensureTerminal(cwd) {
+    const stored = (await orca.host.call('storage.get', { key: TERMINALS_KEY }))?.value ?? {}
+    const known = stored[cwd]
+    if (known) {
+      const listed = await runJson(ORCA_BIN, ['terminal', 'list', '--worktree', `path:${cwd}`, '--json'])
+      if (listed.result.terminals.some((terminal) => terminal.handle === known)) return known
+    }
+    const created = await runJson(ORCA_BIN, [
+      'terminal',
+      'create',
+      '--worktree',
+      `path:${cwd}`,
+      '--title',
+      'Entire',
+      '--json'
+    ])
+    const handle = created.result.terminal.handle
+    await orca.host.call('storage.set', { key: TERMINALS_KEY, value: { ...stored, [cwd]: handle } })
+    return handle
+  }
+
   async function refresh() {
     if (!focus?.cwd) return
     const refreshGeneration = generation
@@ -174,11 +204,19 @@ export default function activate(orca) {
       return null
     })
     if (refreshGeneration !== generation) return
+    if (!focus.terminalId && trail.status === 'open') {
+      focus.terminalId = await ensureTerminal(cwd).catch((error) => {
+        log(error)
+        return null
+      })
+      if (refreshGeneration !== generation) return
+    }
     state = {
       status: 'ready',
       branch,
       trail: pickTrail(trail),
-      findings: findings && pickFindings(findings)
+      findings: findings && pickFindings(findings),
+      terminalId: focus.terminalId
     }
     if (!watcher) startWatch(trail.number, cwd, refreshGeneration)
     await publish()
@@ -188,7 +226,7 @@ export default function activate(orca) {
     const focusGeneration = ++generation
     stopWatch()
     monitors = new Map()
-    focus = { branch, cwd: null }
+    focus = { branch, cwd: null, terminalId: null }
     lastCheck = Date.now()
     try {
       const shown = await runJson(ORCA_BIN, [

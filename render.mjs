@@ -113,18 +113,136 @@ function findingsCount(findings) {
   return `${Open} open${parts.length ? ` · ${parts.join(', ')}` : ''}`
 }
 
+const CHECK_ORDER = { bad: 0, running: 1, good: 2, skipped: 3 }
+const CHECK_ICONS = { bad: '✕', running: '•', good: '✓', skipped: '–' }
+const CHECK_LABELS = { bad: 'failed', running: 'running', good: 'passed', skipped: 'skipped' }
+
+function checkTone(check) {
+  if (check.status !== 'completed') return 'running'
+  if (check.conclusion === 'success') return 'good'
+  if (check.conclusion === 'skipped' || check.conclusion === 'neutral') return 'skipped'
+  return 'bad'
+}
+
+function renderChecks(checks) {
+  if (checks.length === 0) {
+    return '<p class="empty">No CI checks reported.</p>'
+  }
+  return checks
+    .map((check) => ({ ...check, tone: checkTone(check) }))
+    .sort((a, b) => CHECK_ORDER[a.tone] - CHECK_ORDER[b.tone] || a.name.localeCompare(b.name))
+    .map(
+      (check) =>
+        `<div class="check ${check.tone}"><span class="icon">${CHECK_ICONS[check.tone]}</span><span>${escapeHtml(check.name)}</span><span class="detail">${escapeHtml(check.app)}</span></div>`
+    )
+    .join('\n')
+}
+
+function checksCount(checks) {
+  const counts = {}
+  for (const check of checks) {
+    const tone = checkTone(check)
+    counts[tone] = (counts[tone] ?? 0) + 1
+  }
+  return Object.keys(CHECK_ORDER)
+    .filter((tone) => counts[tone])
+    .map((tone) => `${counts[tone]} ${CHECK_LABELS[tone]}`)
+    .join(' · ')
+}
+
+/** ANSI-C quoting, so a comment reaches `entire` verbatim when typed into a bash or zsh prompt. */
+export function shellQuote(text) {
+  const escaped = text
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+  return `$'${escaped}'`
+}
+
+// Panels can only type into a terminal, so buttons run `entire` in the worker-owned Entire tab.
+const PANEL_SCRIPT = `${shellQuote.toString()}
+(function () {
+  var root = document.getElementById('trail-actions')
+  if (!root) return
+  var status = document.getElementById('action-status')
+  var seq = 0
+  var pending = {}
+  window.addEventListener('message', function (event) {
+    var message = event.data
+    if (!message || message.type !== 'orca-panel-action-result' || !pending[message.requestId]) return
+    pending[message.requestId](message)
+    delete pending[message.requestId]
+  })
+  function run(command, onSent) {
+    var requestId = 'req-' + ++seq
+    pending[requestId] = function (result) {
+      var sent = result.ok && result.value && result.value.accepted
+      status.textContent = sent ? 'Sent to the Entire terminal.' : 'Could not reach the Entire terminal.'
+      if (sent && onSent) onSent()
+    }
+    window.parent.postMessage(
+      { type: 'orca-panel-action', requestId: requestId, action: 'terminal.sendText',
+        params: { terminalId: root.dataset.terminal, text: command, enter: true } },
+      '*'
+    )
+  }
+  var approve = document.getElementById('approve')
+  var armed = null
+  approve.addEventListener('click', function () {
+    if (!armed) {
+      approve.textContent = 'Click again to approve'
+      armed = setTimeout(function () { armed = null; approve.textContent = 'Approve' }, 4000)
+      return
+    }
+    clearTimeout(armed)
+    armed = null
+    approve.textContent = 'Approve'
+    run('entire trail approve ' + root.dataset.trail)
+  })
+  var comment = document.getElementById('comment')
+  document.getElementById('post').addEventListener('click', function () {
+    var text = comment.value.trim()
+    if (!text) return
+    run('entire trail comment add --trail ' + root.dataset.trail + ' -m ' + shellQuote(text), function () {
+      comment.value = ''
+    })
+  })
+})()`
+
+function renderActions(view) {
+  if (view.trail.status !== 'open') return { approve: '', comment: '' }
+  if (!view.terminalId) {
+    return {
+      approve:
+        '<p class="note">Approve and comment are unavailable: Orca could not open an Entire terminal.</p>',
+      comment: ''
+    }
+  }
+  return {
+    approve: `<div class="actions" id="trail-actions" data-terminal="${escapeHtml(view.terminalId)}" data-trail="${escapeHtml(view.trail.number)}"><button id="approve" class="primary">Approve</button><span id="action-status" class="detail"></span></div>`,
+    comment:
+      '<section><h2>Comment</h2><textarea id="comment" rows="3" maxlength="1800" placeholder="Start a discussion on this trail"></textarea><button id="post">Post comment</button></section>'
+  }
+}
+
 function renderBody(view) {
   switch (view.status) {
     case 'ready': {
       const { trail } = view
+      const actions = renderActions(view)
       return `<header>
   <div class="trail-line"><span class="number">Trail #${escapeHtml(trail.number)}</span><span class="status">${escapeHtml(trail.status)}</span></div>
   <div class="title">${escapeHtml(trail.title)}</div>
   <div class="meta">${escapeHtml(view.branch)} · ${escapeHtml(shortSha(trail.headSha))} → ${escapeHtml(trail.base)}</div>
 </header>
+${actions.approve}
 <section><h2>Scores</h2>${renderScores(view.monitors, trail.headSha)}</section>
 <section><h2>Gates</h2>${renderGates(trail.gates)}</section>
-<section><h2>Findings <span class="count">${escapeHtml(findingsCount(view.findings))}</span></h2>${renderFindings(view.findings)}</section>`
+<section><h2>Checks <span class="count">${escapeHtml(checksCount(trail.checks))}</span></h2>${renderChecks(trail.checks)}</section>
+<section><h2>Findings <span class="count">${escapeHtml(findingsCount(view.findings))}</span></h2>${renderFindings(view.findings)}</section>
+${actions.comment}`
     }
     case 'no-trail':
       return `<p class="message">No open Entire trail for <code>${escapeHtml(view.branch)}</code>. Trails attach after the first push and detach when the PR merges.</p>`
@@ -186,11 +304,21 @@ export function renderPanel(view, updatedAt) {
   code, pre { font-family: ui-monospace, monospace; font-size: 11px; }
   pre.error { white-space: pre-wrap; color: var(--bad); }
   footer { font-size: 11px; }
+  .check { display: grid; grid-template-columns: 14px 1fr auto; gap: 6px; padding: 4px 0; border-bottom: 1px solid var(--border, #333); }
+  .check .detail { margin: 0; font-size: 11px; }
+  .running .icon { color: var(--warn); }
+  .skipped { opacity: .55; }
+  .actions { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .actions .detail { margin: 0; font-size: 11px; }
+  button { padding: 4px 10px; border: 1px solid var(--border, #444); border-radius: 6px; background: var(--secondary, #2a2a2a); color: var(--foreground, #ddd); font: inherit; cursor: pointer; }
+  button.primary { border-color: transparent; background: var(--primary, #ddd); color: var(--primary-foreground, #111); }
+  textarea { box-sizing: border-box; width: 100%; margin-bottom: 6px; padding: 6px 8px; border: 1px solid var(--input, #444); border-radius: 6px; background: transparent; color: inherit; font: inherit; resize: vertical; }
 </style>
 </head>
 <body>
 ${renderBody(view)}
 ${time}
+<script>${PANEL_SCRIPT}</script>
 </body>
 </html>
 `

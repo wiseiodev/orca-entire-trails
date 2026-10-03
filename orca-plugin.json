@@ -3,19 +3,54 @@
   "id": "entire-trails",
   "publisher": "wiseiodev",
   "name": "Entire Trails",
-  "version": "0.1.0",
-  "description": "Entire Trail runner scores, gates, and open findings for the focused worktree.",
+  "version": "0.2.0",
+  "description": "Entire Trail runner scores, gates, CI checks, and open findings for the focused worktree, with approve and comment actions.",
   "repository": "https://github.com/wiseiodev/orca-entire-trails",
-  "engines": { "orca": ">=1.4.219" },
+  "engines": {
+    "orca": ">=1.4.219"
+  },
   "pluginApi": 1,
   "main": "main.mjs",
   "contributes": {
-    "panels": [{ "id": "trail", "title": "Entire Trail", "icon": "gauge", "entry": "panel.html" }],
-    "commands": [
-      { "id": "refresh", "title": "Entire Trails: Refresh" },
-      { "id": "open-trail", "title": "Entire Trails: Open Trail in Browser" }
+    "panels": [
+      {
+        "id": "trail",
+        "title": "Entire Trail",
+        "icon": "gauge",
+        "entry": "panel.html"
+      }
     ],
-    "events": [{ "on": "agent.status.changed" }, { "on": "worktree.created" }]
+    "commands": [
+      {
+        "id": "refresh",
+        "title": "Entire Trails: Refresh"
+      },
+      {
+        "id": "open-trail",
+        "title": "Entire Trails: Open Trail in Browser"
+      }
+    ],
+    "events": [
+      {
+        "on": "agent.status.changed"
+      },
+      {
+        "on": "worktree.created"
+      }
+    ]
   },
-  "capabilities": [{ "kind": "workspace:read" }, { "kind": "events:subscribe" }]
+  "capabilities": [
+    {
+      "kind": "workspace:read"
+    },
+    {
+      "kind": "terminal:send"
+    },
+    {
+      "kind": "storage"
+    },
+    {
+      "kind": "events:subscribe"
+    }
+  ]
 }
