@@ -49,9 +49,25 @@ function run(file, args, cwd) {
 
 const runJson = async (file, args, cwd) => JSON.parse(await run(file, args, cwd))
 
-function pickTrail(trail) {
+// A trail spans repositories, so the branch's change in this repository is what has gates and scores.
+// Only the change's detail route still serves mergeability; a bare trail number now names the whole trail.
+async function findChange(branch, cwd) {
+  const parent = await runJson('entire', ['trail', 'show', '--branch', branch, '--json'], cwd)
+  for (const change of parent.changes.filter((item) => item.branch === branch)) {
+    const trail = await runJson(
+      'entire',
+      ['api', '--to', 'cell', `/api/v1/trails/gh/{owner}/{repo}/${change.number}`],
+      cwd
+    )
+    if (trail.branch === branch) return { trail, selector: `${change.repository}/${change.number}` }
+  }
+  throw new Error(`no trail found for ${branch} in this repository`)
+}
+
+function pickTrail(trail, selector) {
   return {
     number: trail.number,
+    selector,
     title: trail.title,
     url: trail.url,
     status: trail.status,
@@ -137,8 +153,8 @@ export default function activate(orca) {
     watcher = null
   }
 
-  function startWatch(trailNumber, cwd, watchGeneration) {
-    const child = spawn('entire', ['trail', 'watch', String(trailNumber), '--json'], {
+  function startWatch(selector, cwd, watchGeneration) {
+    const child = spawn('entire', ['trail', 'watch', selector, '--json'], {
       cwd,
       env: ENV,
       stdio: ['ignore', 'pipe', 'ignore']
@@ -259,25 +275,26 @@ export default function activate(orca) {
     const { branch, cwd } = focus
     lastCheck = Date.now()
     let trail
+    let selector
     try {
-      trail = await runJson('entire', ['trail', 'show', '--branch', branch, '--json'], cwd)
+      ;({ trail, selector } = await findChange(branch, cwd))
     } catch (error) {
       if (refreshGeneration !== generation) return
       stopWatch()
-      state = /no trail found/i.test(error.message)
+      state = /no trail found|no discoverable project trail/i.test(error.message)
         ? { status: 'no-trail', branch }
         : { status: 'error', branch, error: error.message }
       return publish()
     }
     const findings = await runJson(
       'entire',
-      ['trail', 'finding', '--branch', branch, '--json', '-n', '50'],
+      ['trail', 'finding', 'list', selector, '--json', '-n', '50'],
       cwd
     ).catch((error) => {
       log(error)
       return null
     })
-    const discussions = await fetchDiscussions(trail.number, cwd).catch((error) => {
+    const discussions = await fetchDiscussions(selector, cwd).catch((error) => {
       log(error)
       return null
     })
@@ -307,7 +324,7 @@ export default function activate(orca) {
     state = {
       status: 'ready',
       branch,
-      trail: pickTrail(trail),
+      trail: pickTrail(trail, selector),
       findings: findings && pickFindings(findings),
       discussions,
       terminalId: focus.terminalId,
@@ -315,17 +332,18 @@ export default function activate(orca) {
       agents,
       refreshPath: join(REFRESH_DIR, REFRESH_FILE)
     }
-    if (!watcher) startWatch(trail.number, cwd, refreshGeneration)
+    if (!watcher) startWatch(selector, cwd, refreshGeneration)
     await publish()
   }
 
   // Discussions emit no watch events, so they are listed on refresh and on a slow poll.
   // A thread is only re-read when its last message changes.
-  async function fetchDiscussions(trailNumber, cwd) {
+  async function fetchDiscussions(selector, cwd) {
     lastDiscussionCheck = Date.now()
-    const trailArgs = ['--trail', String(trailNumber), '--json']
+    const trailArgs = ['--trail', selector, '--json']
     const listed = await runJson('entire', ['trail', 'comment', 'list', ...trailArgs], cwd)
-    const items = listed.items
+    // Entire 0.12 sends null, not [], when a trail has no discussions.
+    const items = (listed.items ?? [])
       .filter((item) => item.kind === 'discussion')
       .sort(
         (a, b) =>
@@ -354,7 +372,7 @@ export default function activate(orca) {
   async function refreshDiscussions() {
     if (state.status !== 'ready' || !focus?.cwd) return
     const discussionsGeneration = generation
-    const discussions = await fetchDiscussions(state.trail.number, focus.cwd)
+    const discussions = await fetchDiscussions(state.trail.selector, focus.cwd)
     if (discussionsGeneration !== generation || state.status !== 'ready') return
     state = { ...state, discussions }
     await publish()

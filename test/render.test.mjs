@@ -21,6 +21,7 @@ const readyView = (overrides) => ({
   branch: 'feature',
   trail: {
     number: 7,
+    selector: 'app/7',
     title: 'feat: x',
     status: 'open',
     base: 'main',
@@ -65,7 +66,7 @@ test('comments survive bash and zsh quoting verbatim', () => {
 })
 
 test('actions need an open trail and its Entire terminal', () => {
-  assert.ok(renderPanel(readyView({ terminalId: 'term_1' })).includes('data-terminal="term_1" data-trail="7"'))
+  assert.ok(renderPanel(readyView({ terminalId: 'term_1' })).includes('data-terminal="term_1" data-trail="app/7"'))
   assert.ok(!renderPanel(readyView({})).includes('id="approve"'))
   const merged = readyView({ terminalId: 'term_1' })
   merged.trail = { ...merged.trail, status: 'merged' }
@@ -90,13 +91,13 @@ const looseEnds = {
 }
 
 test('score prompts are one line, capped, and worded for the score', () => {
-  const clear = scorePrompt(looseEnds, 7)
+  const clear = scorePrompt(looseEnds, 'app/7')
   assert.ok(!clear.includes('\n'))
-  assert.ok(clear.startsWith("Clear up the loose ends that Entire Trail #7's Loose Ends runner found on bbbbbbb."))
+  assert.ok(clear.startsWith("Clear up the loose ends that Entire Trail app/7's Loose Ends runner found on bbbbbbb."))
   assert.ok(clear.includes('2 loose ends • doc never written • question unanswered'))
   const risk = { key: 'risk', label: 'Risk', ...percent('lower_is_better', 27), rationale: 'x'.repeat(5000), head_sha: 'bbbbbbb1' }
-  const lower = scorePrompt(risk, 7)
-  assert.ok(lower.startsWith('Lower the Risk score Entire Trail #7 gave bbbbbbb (now 27%)'))
+  const lower = scorePrompt(risk, 'app/7')
+  assert.ok(lower.startsWith('Lower the Risk score Entire Trail app/7 gave bbbbbbb (now 27%)'))
   assert.ok(lower.length < 4096)
 })
 

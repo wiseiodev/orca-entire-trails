@@ -27,8 +27,8 @@ those CLIs.
 ## Requirements
 
 - macOS and Orca 1.4.219 or later.
-- [`entire`](https://entire.io) installed and signed in (`entire auth status`), in a repository with
-  Entire Trails.
+- [`entire`](https://entire.io) 0.12.0 or later, installed and signed in (`entire auth status`), in a
+  repository with Entire Trails.
 - [`gh`](https://cli.github.com) signed in (`gh auth status`). Merge uses it.
 
 The worker looks for these CLIs in `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, then
@@ -106,8 +106,10 @@ that: the worker rewrites `panel.html` whenever something changes, and Orca relo
 plugin panels when their files change.
 
 - The worker checks the focused worktree every second, finds its folder with
-  `orca worktree show`, and reads the trail with `entire trail show`, `entire trail finding`, and
-  `entire trail comment`.
+  `orca worktree show`, and finds the branch's change in the trail with `entire trail show`. The
+  gates and checks come from the change's detail through `entire api`, because no other command
+  reports them. Findings and discussions come from `entire trail finding list` and
+  `entire trail comment`, keyed by the change, such as `rate-shop/321`.
 - Scores and their history come from `entire trail watch --json`, which replays every past score
   and then streams new ones.
 - Discussions emit no watch events, so they are re-checked every minute.
