@@ -5,6 +5,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
+import { pickAgents, reviewRuns, runReviewId } from './agents.mjs'
 import { renderPanel } from './render.mjs'
 
 const PANEL_PATH = fileURLToPath(new URL('./panel.html', import.meta.url))
@@ -96,7 +97,8 @@ const pickMessage = (message) => ({
   replies: (message.replies ?? []).map(pickMessage)
 })
 
-function pickFindings(result) {
+// A runner posts as `agent:<runner id>`; an agent on Entire posts under a shared automation actor, so its review names it.
+function pickFindings(result, reviewers) {
   return {
     counts: result.counts,
     items: result.findings.map((finding) => ({
@@ -104,7 +106,9 @@ function pickFindings(result) {
       title: finding.title,
       body: finding.body ?? '',
       file: finding.location?.filePath ?? null,
-      line: finding.location?.startLine ?? null
+      line: finding.location?.startLine ?? null,
+      author:
+        /^agent:(.+)$/.exec(finding.actorId ?? '')?.[1] ?? reviewers[finding.reviewId] ?? null
     }))
   }
 }
@@ -125,6 +129,9 @@ export default function activate(orca) {
   let working = false
   let lastDiscussionCheck = 0
   const discussionCache = new Map()
+  // A finished run and the review it posted don't change, so each is read once.
+  const runReviews = new Map()
+  const reviewers = {}
 
   const log = (error) => orca.log(error instanceof Error ? error.message : String(error))
 
@@ -269,6 +276,38 @@ export default function activate(orca) {
     agentTimer = setTimeout(() => refreshAgents().catch(log), AGENT_REFRESH_DEBOUNCE_MS)
   }
 
+  // Entire's findings name no agent, so each review's agent comes from the run that posted it.
+  async function findReviewers(trail, findings, cwd) {
+    const reviewIds = new Set(
+      (findings?.findings ?? [])
+        .filter((finding) => finding.reviewId && !/^agent:/.test(finding.actorId ?? ''))
+        .map((finding) => finding.reviewId)
+    )
+    await Promise.all(
+      [...reviewIds]
+        .filter((reviewId) => !(reviewId in reviewers))
+        .map(async (reviewId) => {
+          for (const { runId, agent } of reviewRuns(trail, reviewId)) {
+            if (!runReviews.has(runId)) {
+              const run = await runJson(
+                'entire',
+                ['api', '--to', 'cell', `/api/v1/gh/{owner}/runs/${runId}`],
+                cwd
+              ).catch((error) => {
+                log(error)
+                return null
+              })
+              if (run) runReviews.set(runId, runReviewId(run))
+            }
+            if (runReviews.get(runId) === reviewId) {
+              reviewers[reviewId] = agent
+              return
+            }
+          }
+        })
+    )
+  }
+
   async function refresh() {
     if (!focus?.cwd) return
     const refreshGeneration = generation
@@ -294,6 +333,7 @@ export default function activate(orca) {
       log(error)
       return null
     })
+    await findReviewers(trail, findings, cwd)
     const discussions = await fetchDiscussions(selector, cwd).catch((error) => {
       log(error)
       return null
@@ -325,7 +365,8 @@ export default function activate(orca) {
       status: 'ready',
       branch,
       trail: pickTrail(trail, selector),
-      findings: findings && pickFindings(findings),
+      findings: findings && pickFindings(findings, reviewers),
+      agentScores: pickAgents(trail),
       discussions,
       terminalId: focus.terminalId,
       mergeMethod: focus.mergeMethod ?? null,

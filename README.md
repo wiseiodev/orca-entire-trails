@@ -1,7 +1,7 @@
 # Entire Trails for Orca
 
 An [Orca](https://github.com/stablyai/orca) side panel for [Entire](https://entire.io) Trails. It
-follows the worktree you have focused and shows that branch's open trail: runner scores and how
+follows the worktree you have focused and shows that branch's open trail: agent and runner scores and how
 they changed, gates, CI checks, findings, and discussion. You can approve, merge, comment, open the
 trail, or ask your coding agent to work on a score without leaving Orca.
 
@@ -14,13 +14,18 @@ those CLIs.
 
 - **Header:** trail number (click it to open the trail in your browser), status, title, branch,
   and head commit.
-- **Scores:** Confidence, Risk, Security, Drift, and Loose Ends, updated live as runners report.
+- **Scores:** the scores from the repository's runners, then one row for each agent the project
+  sets up on Entire, in the order Entire lists them. They update as Entire reports.
+  - A score is a bar, a Yes or No, or a Small, Medium or Large.
   - A badge shows the change since the previous scored commit, green when it moved the right way.
-  - Open a score to read the runner's explanation and its history by commit.
+    While an agent scores a new push, its badge says **scoring** and the row keeps the last score; a
+    run that failed says **failed**, and opening the row shows why.
+  - Open a score to read its explanation, its history by commit, and how many open findings an agent
+    raised.
   - Scores that can still improve get a button for each agent tab in the worktree, for example
     **Lower this with Claude · Codex**, which sends that agent a one-line prompt to work on it.
 - **Gates, Checks, Findings:** the trail's gates, every CI check run (failures first), and open
-  agent findings with file and line.
+  findings with file and line and the runner or agent that raised each one.
 - **Discussion:** open threads first, with messages and replies, plus a box to start a new one.
 - **Actions:** **Approve** and **Merge** (both need two clicks) and **Refresh**.
 
@@ -95,7 +100,7 @@ per worktree with an open trail, and each button types its command there, where 
 - **Refresh** touches a file the worker watches, then the worker re-reads everything and replays the
   score stream. Approve and Post comment refresh the same way when they succeed.
 - **Agent buttons** type straight into that agent's tab and press Enter. The prompt is one line,
-  because a newline would submit early, and it marks the runner's notes as evidence rather than
+  because a newline would submit early, and it marks the score's notes as evidence rather than
   instructions.
 
 ## How it works
@@ -110,8 +115,11 @@ plugin panels when their files change.
   gates and checks come from the change's detail through `entire api`, because no other command
   reports them. Findings and discussions come from `entire trail finding list` and
   `entire trail comment`, keyed by the change, such as `rate-shop/321`.
-- Scores and their history come from `entire trail watch --json`, which replays every past score
-  and then streams new ones.
+- Agent scores and their history come from the same change detail, which is read again whenever
+  `entire trail watch --json` reports an agent starting or finishing a run. Runner scores come from
+  the watch stream itself, which replays every past score and then streams new ones.
+- Entire's findings don't name the agent that raised them, so the worker reads the agent run that
+  posted each finding's review through `entire api`, once per run.
 - Discussions emit no watch events, so they are re-checked every minute.
 
 Known limits:

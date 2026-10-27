@@ -53,7 +53,7 @@ test('scores from an older push are marked stale', () => {
       monitors: [{ key: 'risk', label: 'Risk', ...percent('lower_is_better', 10), head_sha: 'aaaaaaa1' }]
     })
   )
-  assert.ok(html.includes("Runners haven't scored bbbbbbb yet"))
+  assert.ok(html.includes("Nothing has scored bbbbbbb yet"))
   assert.ok(html.includes('class="row good stale"'))
 })
 
